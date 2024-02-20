@@ -1,0 +1,201 @@
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <Bounce2.h>
+
+
+
+
+LiquidCrystal_I2C lcd(0x27, 20, 4);
+
+#define DIR_PIN_X 2
+#define STEP_PIN_X 3
+#define DIR_PIN_Y 4
+#define STEP_PIN_Y 5
+
+#define LED_PIN 6
+#define SOLENOIDE_PIN 10
+#define LED_TEST_PIN 6  // Pino para teste com LED
+
+#define MOTORVIBRA_PIN 18
+
+#define LEDCANCEL_PIN 19
+
+// Fim de curso E ZERA POSIÇÃO X e Y
+#define ENDSTOPX_BUTTON_XE_PIN 9 // fim de curso direito
+#define ENDSTOPX_BUTTON_XD_PIN 12 //fim de curso esquerdo 
+#define INICIOY_BUTTON_YT_PIN 13  // fim de curso Y topo
+#define INICIOYB_BUTTON_YB_PIN 14 // fim de curso Y base
+
+//Fim de  curso normal X e Y 
+Bounce inicioDebouncer = Bounce();  // Fim de curso inicio e zera
+Bounce endstopxDebouncer = Bounce();  // Fim de curso x esquerdo
+Bounce endstopxdDebouncer = Bounce();  // Fim de curso x direita
+Bounce inicioyDebouncer = Bounce();  // Fim de curso y topo
+Bounce inicioybDebouncer = Bounce();  // Fim de curso y base
+
+
+#define SELECT_BUTTON_PIN 7  // Pino para o botão de seleção
+#define START_BUTTON_PIN 8   // Pino para botão de Inicializar
+#define STOP_BUTTON_PIN 11  // Pino para o botão de surto
+
+Bounce selectDebouncer = Bounce();  // Debouncer para o botão de seleção
+Bounce startDebouncer = Bounce();  // Debouncer para o botão de início
+Bounce stopDebouncer = Bounce();  // Debouncer para o botão de surto
+
+int stepsCountX = 0;
+int stepsCountY = 0;
+bool movementStarted = false;
+bool setupCarregado = true;
+bool setupCarregadoInicio = true;
+
+int state = 0;
+unsigned long lastStepTime = 0;
+unsigned long stepInterval = 100;  // Intervalo de espera entre etapas em milissegundos
+
+struct Movement {
+  int motor;
+  int steps;
+  bool clockwise;
+  const char* label;
+  float millimeters;
+};
+
+void setupAlbert();
+void loopAlbert();
+void setupBill();
+void loopBill();
+void setupStart();
+void loopStart();
+
+void (*currentLoop)() = nullptr;
+
+void setup() {
+  Wire.setSDA(0);
+  Wire.setSCL(1);
+  Wire.begin();
+  lcd.init();
+  lcd.backlight();
+  lcd.setCursor(5, 1);
+  lcd.print("Bem vindo!");
+  lcd.setCursor(5, 2);
+  lcd.print(">Praditto<");
+  delay(100);
+
+// led de alerta
+  pinMode(LED_PIN, OUTPUT);
+  pinMode(LED_TEST_PIN, OUTPUT);
+//Solenoide
+  pinMode(SOLENOIDE_PIN, OUTPUT);
+  
+  pinMode(MOTORVIBRA_PIN, OUTPUT);
+
+  pinMode(LEDCANCEL_PIN, OUTPUT);
+
+// Fim de curso
+  pinMode(ENDSTOPX_BUTTON_XE_PIN, INPUT_PULLUP);
+  pinMode(ENDSTOPX_BUTTON_XD_PIN, INPUT_PULLUP);
+  pinMode(INICIOY_BUTTON_YT_PIN, INPUT_PULLUP);
+  pinMode(INICIOYB_BUTTON_YB_PIN, INPUT_PULLUP);
+
+
+
+  pinMode(SELECT_BUTTON_PIN, INPUT_PULLUP);
+  digitalWrite(SELECT_BUTTON_PIN, HIGH);
+  pinMode(START_BUTTON_PIN, INPUT_PULLUP);
+  digitalWrite(START_BUTTON_PIN, HIGH);
+
+  pinMode(STOP_BUTTON_PIN, INPUT_PULLUP);
+  digitalWrite(START_BUTTON_PIN, HIGH);
+
+  digitalWrite(SOLENOIDE_PIN, LOW);
+  digitalWrite(MOTORVIBRA_PIN, LOW);
+
+  selectDebouncer.attach(SELECT_BUTTON_PIN);
+  selectDebouncer.interval(50);
+  startDebouncer.attach(START_BUTTON_PIN);
+  startDebouncer.interval(50);
+  stopDebouncer.attach(STOP_BUTTON_PIN);
+  stopDebouncer.interval(50);
+  //fim de curso
+  inicioDebouncer.attach(ENDSTOPX_BUTTON_XE_PIN);
+  inicioDebouncer.interval(50);
+  endstopxdDebouncer.attach(ENDSTOPX_BUTTON_XD_PIN);
+  endstopxdDebouncer.interval(50);
+  inicioyDebouncer.attach(INICIOY_BUTTON_YT_PIN);
+  inicioyDebouncer.interval(50);
+  inicioybDebouncer.attach(INICIOYB_BUTTON_YB_PIN);
+  inicioybDebouncer.interval(50);
+ 
+  pinMode(STEP_PIN_X, OUTPUT);
+  pinMode(DIR_PIN_X, OUTPUT);
+  pinMode(STEP_PIN_Y, OUTPUT);
+  pinMode(DIR_PIN_Y, OUTPUT);
+  digitalWrite(STEP_PIN_X, LOW);
+  digitalWrite(DIR_PIN_X, LOW);
+  digitalWrite(STEP_PIN_Y, LOW);
+  digitalWrite(DIR_PIN_Y, LOW);
+
+  Serial.begin(9600);
+  lcd.clear();
+  lcd.setCursor(7, 3);
+  lcd.print(">by Praditto<");
+  lcd.setCursor(0, 0);
+  lcd.print ("Setup Inicializado");
+  delay(100);
+
+  if (digitalRead(ENDSTOPX_BUTTON_XE_PIN) == LOW) {
+    Serial.println("Fim de Curso XE Atingido");
+    return;
+  }
+   
+}
+
+void loop() {
+  selectDebouncer.update();
+  startDebouncer.update();
+  stopDebouncer.update();
+  //Chamada dos debouncer fim de curso
+  inicioDebouncer.update();
+  endstopxdDebouncer.update();
+  inicioyDebouncer.update();
+  inicioybDebouncer.update();
+ 
+
+
+  if (setupCarregado) {
+    lcd.clear();
+    lcd.setCursor(7, 3);
+    lcd.print(">by Praditto<");
+    lcd.setCursor(0, 0);
+    lcd.print("Setup Carregado:");
+    lcd.setCursor(0, 1);
+    lcd.print("ESCOLHA UM MODELO");
+    setupCarregado = false;
+    currentLoop = &loopStart;
+
+    
+  }
+
+  if (selectDebouncer.fell()) {
+    if (currentLoop == &loopStart || currentLoop == &loopBill) {
+      Serial.println("Seleção: Albert");
+      lcd.clear();
+      lcd.setCursor(7, 3);
+      lcd.print(">by Praditto<");
+      lcd.setCursor(0, 0);
+      lcd.print("Modelo Selecionado:");
+      lcd.setCursor(7, 1);
+      lcd.print("ALBERT");
+      currentLoop = &loopAlbert;
+    } else {
+      Serial.println("Seleção: Bill");
+      lcd.setCursor(7, 1);
+      lcd.print(" BILL ");
+      currentLoop = &loopBill;
+    }
+  }
+
+  if (currentLoop != nullptr) {
+    (*currentLoop)();
+  }
+}
