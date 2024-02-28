@@ -1,0 +1,71 @@
+# Convertendo o código C++ para Python
+
+# Bibliotecas necessárias para a conversão
+# Para GPIO, botões, e LCD, podemos usar gpiozero e RPLCD para Raspberry Pi ou similares para outros microcontroladores.
+# Nota: Este código é um esqueleto. Dependendo do hardware específico, algumas adaptações podem ser necessárias.
+
+from gpiozero import Button, LED, OutputDevice
+from RPLCD.i2c import CharLCD
+from time import sleep
+
+# Configurações iniciais
+lcd = CharLCD('PCF8574', 0x27)
+seleciona_modelo_pin = Button(26)
+modelo_albert_selecionado = False
+voltar_selecao_modelo = False
+
+# Pins dos motores e LEDs
+dir_pin_x = OutputDevice(5)
+step_pin_x = OutputDevice(28)
+dir_pin_y = OutputDevice(21)
+step_pin_y = OutputDevice(22)
+led_pin = LED(10)
+solenoide_pin = OutputDevice(18)
+motor_vibra_pin = OutputDevice(20)
+led_cancel_pin = LED(13)
+
+# Botões com debouncing
+select_button = Button(2)
+start_button = Button(3)
+stop_button = Button(4)
+
+# Funções para controlar o LCD
+def iniciar_lcd():
+    lcd.clear()
+    lcd.write_string("Bem vindo!\r\n")
+    lcd.write_string(">Praditto<")
+    sleep(0.1)
+
+# Funções de setup e loop para modelos específicos (Albert, Bill, etc.)
+def setup_albert():
+    # Configurações específicas do modelo Albert
+    pass
+
+def loop_albert():
+    # Loop de execução específico do modelo Albert
+    pass
+
+# Função principal de setup
+def setup():
+    iniciar_lcd()
+    # Configurações adicionais, como definição de direção e passos dos motores
+    dir_pin_x.off()
+    step_pin_x.off()
+    dir_pin_y.off()
+    step_pin_y.off()
+
+    # Outras inicializações
+
+# Loop principal
+def main_loop():
+    while True:
+        # Código para atualizar debouncers e verificar botões
+        # Lógica principal do programa, similar ao loop() do código Arduino
+        pass
+
+# NOTA: Este é um esqueleto básico do código. A implementação completa dependerá das funções específicas do programa original,
+# como a manipulação de eventos de botões, leitura de sensores, e controle de motores.
+
+# Descomentar para executar
+# setup()
+# main_loop()

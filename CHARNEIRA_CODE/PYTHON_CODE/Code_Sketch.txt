@@ -1,0 +1,38 @@
+from machine import Pin, I2C
+import utime
+
+# Configurações iniciais do I2C para o LCD
+i2c = I2C(0, scl=Pin(22), sda=Pin(21), freq=400000)  # Ajuste os pinos conforme sua conexão
+
+# Configuração dos botões e LEDs
+seleciona_modelo_pin = Pin(26, Pin.IN, Pin.PULL_UP)
+led_pin = Pin(10, Pin.OUT)
+solenoide_pin = Pin(18, Pin.OUT)
+motor_vibra_pin = Pin(20, Pin.OUT)
+led_cancel_pin = Pin(13, Pin.OUT)
+
+# Exemplo de definição de botão com interrupção para debouncing
+def botao_callback(p):
+    print("Botão pressionado!", p)
+
+select_button = Pin(2, Pin.IN, Pin.PULL_UP)
+select_button.irq(trigger=Pin.IRQ_FALLING, handler=botao_callback)
+
+# Exemplo de inicialização e uso do LCD com a biblioteca específica para seu display
+def iniciar_lcd():
+    # Esta função dependerá da biblioteca específica do seu LCD I2C
+    # Você precisará encontrar uma biblioteca compatível com MicroPython para o seu display
+    pass
+
+# Função principal de setup
+def setup():
+    iniciar_lcd()
+    # Configurações adicionais
+
+# Loop principal
+def main_loop():
+    while True:
+        # Lógica principal do programa
+        utime.sleep(0.1)  # Delay para reduzir o uso da CPU
+
+# NOTA: Este é um esqueleto básico do código. A implementação completa dependerá das funções específicas do programa original.

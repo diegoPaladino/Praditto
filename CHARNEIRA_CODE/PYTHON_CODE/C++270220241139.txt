@@ -1,0 +1,287 @@
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <Bounce2.h>
+
+
+
+
+LiquidCrystal_I2C lcd(0x27, 20, 4);
+
+
+const int selecionaModelo = 26;  // Pino onde o divisor de tensão está conectado
+bool voltarSelecaoModelo = false; // Variável para controlar se a seleção de modelo foi restaurada
+bool modeloAlbertSelecionado = false; // Variável para controlar se o modelo Albert foi selecionado
+
+
+#define DIR_PIN_X 5
+#define STEP_PIN_X 28
+#define DIR_PIN_Y 21
+#define STEP_PIN_Y 22
+
+#define LEDPI_PIN 25
+
+#define LED_PIN 10
+#define SOLENOIDE_PIN 18
+#define LED_TEST_PIN 10  // Pino para teste com LED
+
+#define MOTORVIBRA_PIN 20
+
+#define LEDCANCEL_PIN 13
+
+// Fim de curso E ZERA POSIÇÃO X e Y
+#define ENDSTOPX_BUTTON_XE_PIN 17//9 // fim de curso direito
+#define ENDSTOPX_BUTTON_XD_PIN 28 //fim de curso esquerdo 
+#define INICIOY_BUTTON_YT_PIN 19  // fim de curso Y topo
+#define INICIOYB_BUTTON_YB_PIN 16 // fim de curso Y base
+
+//Fim de  curso normal X e Y 
+Bounce inicioDebouncer = Bounce();  // Fim de curso inicio e zera
+Bounce endstopxDebouncer = Bounce();  // Fim de curso x esquerdo
+Bounce endstopxdDebouncer = Bounce();  // Fim de curso x direita
+Bounce inicioyDebouncer = Bounce();  // Fim de curso y topo
+Bounce inicioybDebouncer = Bounce();  // Fim de curso y base
+
+
+#define SELECT_BUTTON_PIN 2  // Pino para o botão de seleção
+#define START_BUTTON_PIN 3   // Pino para botão de Inicializar
+#define STOP_BUTTON_PIN 4  // Pino para o botão de surto
+
+Bounce selectDebouncer = Bounce();  // Debouncer para o botão de seleção
+Bounce startDebouncer = Bounce();  // Debouncer para o botão de início
+Bounce stopDebouncer = Bounce();  // Debouncer para o botão de surto
+
+int stepsCountX = 0;
+int stepsCountY = 0;
+bool movementStarted = false;
+bool setupCarregado = true;
+bool setupCarregadoInicio = true;
+
+int state = 0;
+unsigned long lastStepTime = 0;
+unsigned long stepInterval = 100;  // Intervalo de espera entre etapas em milissegundos
+
+struct Movement {
+  int motor;
+  int steps;
+  bool clockwise;
+  const char* label;
+  float millimeters;
+};
+
+void setupAlbert();
+void loopAlbert();
+void setupBill();
+void loopBill();
+void setupStart();
+void loopStart();
+//void setupSelecionaModelo();
+//void loopSelecionaModelo();
+
+
+void (*currentLoop)() = nullptr;
+
+void setup() {
+  Wire.setSDA(0);
+  Wire.setSCL(1);
+  Wire.begin();
+  lcd.init();
+  lcd.backlight();
+  lcd.setCursor(5, 1);
+  lcd.print("Bem vindo!");
+  lcd.setCursor(5, 2);
+  lcd.print(">Praditto<");
+  delay(100);
+
+// led de alerta
+  pinMode(LED_PIN, OUTPUT);
+  pinMode(LED_TEST_PIN, OUTPUT);
+
+  pinMode(LEDPI_PIN, OUTPUT);
+
+//Solenoide
+  pinMode(SOLENOIDE_PIN, OUTPUT);
+  
+  pinMode(MOTORVIBRA_PIN, OUTPUT);
+
+  pinMode(LEDCANCEL_PIN, OUTPUT);
+
+// Fim de curso
+  pinMode(ENDSTOPX_BUTTON_XE_PIN, INPUT_PULLUP);
+  pinMode(ENDSTOPX_BUTTON_XD_PIN, INPUT_PULLUP);
+  pinMode(INICIOY_BUTTON_YT_PIN, INPUT_PULLUP);
+  pinMode(INICIOYB_BUTTON_YB_PIN, INPUT_PULLUP);
+
+
+
+  pinMode(SELECT_BUTTON_PIN, INPUT_PULLUP);
+  digitalWrite(SELECT_BUTTON_PIN, HIGH);
+  pinMode(START_BUTTON_PIN, INPUT_PULLUP);
+  digitalWrite(START_BUTTON_PIN, HIGH);
+
+  pinMode(STOP_BUTTON_PIN, INPUT_PULLUP);
+  digitalWrite(START_BUTTON_PIN, HIGH);
+
+  digitalWrite(SOLENOIDE_PIN, LOW);
+  digitalWrite(MOTORVIBRA_PIN, LOW);
+
+  selectDebouncer.attach(SELECT_BUTTON_PIN);
+  selectDebouncer.interval(50);
+  startDebouncer.attach(START_BUTTON_PIN);
+  startDebouncer.interval(50);
+  stopDebouncer.attach(STOP_BUTTON_PIN);
+  stopDebouncer.interval(50);
+  //fim de curso
+  inicioDebouncer.attach(ENDSTOPX_BUTTON_XE_PIN);
+  inicioDebouncer.interval(50);
+  endstopxdDebouncer.attach(ENDSTOPX_BUTTON_XD_PIN);
+  endstopxdDebouncer.interval(50);
+  inicioyDebouncer.attach(INICIOY_BUTTON_YT_PIN);
+  inicioyDebouncer.interval(50);
+  inicioybDebouncer.attach(INICIOYB_BUTTON_YB_PIN);
+  inicioybDebouncer.interval(50);
+ 
+  pinMode(STEP_PIN_X, OUTPUT);
+  pinMode(DIR_PIN_X, OUTPUT);
+  pinMode(STEP_PIN_Y, OUTPUT);
+  pinMode(DIR_PIN_Y, OUTPUT);
+  digitalWrite(STEP_PIN_X, LOW);
+  digitalWrite(DIR_PIN_X, LOW);
+  digitalWrite(STEP_PIN_Y, LOW);
+  digitalWrite(DIR_PIN_Y, LOW);
+
+ 
+    digitalWrite(LEDPI_PIN, HIGH);
+
+  Serial.begin(9600);
+  lcd.clear();
+  lcd.setCursor(7, 3);
+  lcd.print(">by Praditto<");
+  lcd.setCursor(0, 0);
+  lcd.print ("Setup Inicializado");
+  delay(100);
+
+  Serial.begin(115200);
+    pinMode(selecionaModelo, INPUT_PULLUP);
+
+  if (digitalRead(ENDSTOPX_BUTTON_XE_PIN) == LOW) {
+    Serial.println("Fim de Curso XE Atingido");
+    return;
+  }
+   
+}
+
+// Variáveis para armazenar o estado anterior de cada modelo
+int estadoAnteriorAlbert = 0;
+int estadoAnteriorBill = 0;
+int estadoAnteriorAna = 0;
+
+// Função para selecionar o modelo com base no valor recebido
+void selecionarModelo(int valor, int faixaMinima, int faixaMaxima, int& estadoAnterior, const char* nomeModelo, void (*loopModelo)()) {
+    if (valor >= faixaMinima && valor <= faixaMaxima && valor != estadoAnterior) {
+        estadoAnterior = valor;
+        Serial.print("Seleção: ");
+        Serial.println(nomeModelo);
+        lcd.clear();
+        lcd.setCursor(7, 3);
+        lcd.print(">by Praditto<");
+        lcd.setCursor(0, 0);
+        lcd.print("Modelo Selecionado:");
+        lcd.setCursor(7, 1);
+        lcd.print(nomeModelo);
+        currentLoop = loopModelo;
+    }
+}
+
+
+void loop() {
+  selectDebouncer.update();
+  startDebouncer.update();
+  stopDebouncer.update();
+  //Chamada dos debouncer fim de curso
+  inicioDebouncer.update();
+  endstopxdDebouncer.update();
+  inicioyDebouncer.update();
+  inicioybDebouncer.update();
+
+  if (setupCarregado) {
+    lcd.clear();
+    lcd.setCursor(7, 3);
+    lcd.print(">by Praditto<");
+    lcd.setCursor(0, 0);
+    lcd.print("Setup Carregado:");
+    lcd.setCursor(0, 1);
+    lcd.print("ESCOLHA UM MODELO");
+    setupCarregado = false;
+    currentLoop = &loopStart;
+    voltarSelecaoModelo = false; // Reinicia a flag quando o setup é carregado
+    modeloAlbertSelecionado = false; // Reinicia a flag quando o setup é carregado
+  }
+
+  // Leitura analógica do pino 26 para seleção do modelo
+  int valorRecebido = analogRead(selecionaModelo);
+  float voltage = valorRecebido * (3.3 / 1023.0);  
+
+  Serial.print("Valor bruto: ");
+  Serial.print(valorRecebido);
+  Serial.print(", Tensao: ");
+  Serial.print(voltage);
+  Serial.println("V");
+
+  // Verifica se o valor recebido é zero e a seleção de modelo não foi restaurada
+  if (valorRecebido == 8 && !voltarSelecaoModelo) {
+    // Limpa qualquer seleção
+    lcd.clear();
+    lcd.setCursor(7, 3);
+    lcd.print(">by Praditto<");
+    lcd.setCursor(0, 0);
+    lcd.print("Setup Carregado:");
+    lcd.setCursor(0, 1);
+    lcd.print("ESCOLHA UM MODELO");
+    currentLoop = nullptr; // Remove qualquer loop atual
+    voltarSelecaoModelo = true; // Define a flag para indicar que a seleção de modelo foi restaurada
+    modeloAlbertSelecionado = false; // Limpa a flag do modelo Albert quando o valor recebido é zero
+  } else {
+    // Seleciona o modelo com base na leitura analógica
+    // Selecionar o modelo Albert apenas se não estiver selecionado e o valor recebido for 1015
+    if (!modeloAlbertSelecionado && valorRecebido == 1015) {
+      Serial.println("Seleção: Albert");
+      lcd.clear();
+      lcd.setCursor(7, 3);
+      lcd.print(">by Praditto<");
+      lcd.setCursor(0, 0);
+      lcd.print("Modelo Selecionado:");
+      lcd.setCursor(7, 1);
+      lcd.print("ALBERT");
+      currentLoop = &loopAlbert;
+      modeloAlbertSelecionado = true; // Define a flag para indicar que o modelo Albert foi selecionado
+    }
+    // Seleciona o modelo com base na leitura analógica
+    selecionarModelo(valorRecebido, 200, 300, estadoAnteriorAlbert, "ALBERT", &loopAlbert);
+    selecionarModelo(valorRecebido, 1000, 1150, estadoAnteriorBill, "BILL", &loopBill);
+    //selecionarModelo(valorRecebido, 1200, 1250, estadoAnteriorAna, "ANA", &loopAna);
+  }
+
+  if (selectDebouncer.fell()) {
+    if (currentLoop == &loopStart || currentLoop == &loopBill) {
+      Serial.println("Seleção: Albert");
+      lcd.clear();
+      lcd.setCursor(7, 3);
+      lcd.print(">by Praditto<");
+      lcd.setCursor(0, 0);
+      lcd.print("Modelo Selecionado:");
+      lcd.setCursor(7, 1);
+      lcd.print("ALBERT");
+      currentLoop = &loopAlbert;
+      modeloAlbertSelecionado = true; // Define a flag para indicar que o modelo Albert foi selecionado
+    } else {
+      Serial.println("Seleção: Bill");
+      lcd.setCursor(7, 1);
+      lcd.print(" BILL ");
+      currentLoop = &loopBill;
+    }
+  }
+
+  if (currentLoop != nullptr) {
+    (*currentLoop)();
+  }
+}
