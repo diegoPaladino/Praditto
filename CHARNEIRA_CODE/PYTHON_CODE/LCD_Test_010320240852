@@ -1,0 +1,21 @@
+from machine import I2C, Pin
+from time import sleep
+import pcf8574
+import lcd_api
+
+# Inicializa o I2C
+i2c = I2C(0, sda=Pin(8), scl=Pin(9), freq=400000)
+
+# Endereço I2C do módulo LCD (pode variar)
+I2C_ADDR = 0x27
+
+# Inicializa o LCD
+lcd = lcd_api.LcdApi(i2c, I2C_ADDR, 4, 20)
+
+# Limpa o display
+lcd.clear()
+
+# Escreve a mensagem
+lcd.putstr("diegoPaladino")
+
+# Ajuste conforme necessário para a sua configuração e bibliotecas
